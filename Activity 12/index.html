@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Reconocimiento de Números MNIST</title>
+  <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      background: #f5f5f5;
+      padding: 30px;
+    }
+
+    h1 {
+      margin-bottom: 10px;
+    }
+
+    p {
+      color: #555;
+    }
+
+    #canvasGrande {
+      border: 2px solid #000;
+      background: white;
+      cursor: crosshair;
+      touch-action: none;
+      margin-top: 20px;
+    }
+
+    .botones {
+      margin-top: 20px;
+    }
+
+    button {
+      padding: 10px 18px;
+      margin: 0 8px;
+      border: none;
+      border-radius: 8px;
+      background: #111;
+      color: white;
+      cursor: pointer;
+      font-size: 15px;
+    }
+
+    button:hover {
+      opacity: 0.9;
+    }
+
+    #resultado {
+      margin-top: 25px;
+      font-size: 28px;
+      font-weight: bold;
+      color: #0a58ca;
+    }
+
+    #miniPreview {
+      margin-top: 20px;
+      border: 1px solid #999;
+      image-rendering: pixelated;
+      width: 140px;
+      height: 140px;
+      background: white;
+    }
+  </style>
+</head>
+<body>
+  <h1>Reconocimiento de Números</h1>
+  <p>Dibuja un número del 0 al 9 y presiona "Predecir"</p>
+
+  <canvas id="canvasGrande" width="280" height="280"></canvas>
+
+  <div class="botones">
+    <button onclick="limpiarCanvas()">Limpiar</button>
+    <button onclick="predecirNumero()">Predecir</button>
+  </div>
+
+  <div>
+    <h3>Vista 28x28</h3>
+    <canvas id="miniPreview" width="28" height="28"></canvas>
+  </div>
+
+  <div id="resultado">Resultado: -</div>
+
+  <script>
+    const canvas = document.getElementById("canvasGrande");
+    const ctx = canvas.getContext("2d");
+
+    const miniCanvas = document.getElementById("miniPreview");
+    const miniCtx = miniCanvas.getContext("2d");
+
+    let dibujando = false;
+
+    // Fondo blanco
+    ctx.fillStyle = "white";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Estilo de dibujo
+    ctx.strokeStyle = "black";
+    ctx.lineWidth = 18;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+
+    function obtenerPosicion(event) {
+      const rect = canvas.getBoundingClientRect();
+      return {
+        x: event.clientX - rect.left,
+        y: event.clientY - rect.top
+      };
+    }
+
+    canvas.addEventListener("mousedown", (e) => {
+      dibujando = true;
+      const pos = obtenerPosicion(e);
+      ctx.beginPath();
+      ctx.moveTo(pos.x, pos.y);
+    });
+
+    canvas.addEventListener("mousemove", (e) => {
+      if (!dibujando) return;
+      const pos = obtenerPosicion(e);
+      ctx.lineTo(pos.x, pos.y);
+      ctx.stroke();
+    });
+
+    canvas.addEventListener("mouseup", () => {
+      dibujando = false;
+      ctx.beginPath();
+    });
+
+    canvas.addEventListener("mouseleave", () => {
+      dibujando = false;
+      ctx.beginPath();
+    });
+
+    // Soporte tactil
+    canvas.addEventListener("touchstart", (e) => {
+      e.preventDefault();
+      dibujando = true;
+      const touch = e.touches[0];
+      const rect = canvas.getBoundingClientRect();
+      const x = touch.clientX - rect.left;
+      const y = touch.clientY - rect.top;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+    });
+
+    canvas.addEventListener("touchmove", (e) => {
+      e.preventDefault();
+      if (!dibujando) return;
+      const touch = e.touches[0];
+      const rect = canvas.getBoundingClientRect();
+      const x = touch.clientX - rect.left;
+      const y = touch.clientY - rect.top;
+      ctx.lineTo(x, y);
+      ctx.stroke();
+    });
+
+    canvas.addEventListener("touchend", (e) => {
+      e.preventDefault();
+      dibujando = false;
+      ctx.beginPath();
+    });
+
+    function limpiarCanvas() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = "white";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      document.getElementById("resultado").innerHTML = "Resultado: -";
+
+      miniCtx.clearRect(0, 0, miniCanvas.width, miniCanvas.height);
+      miniCtx.fillStyle = "white";
+      miniCtx.fillRect(0, 0, miniCanvas.width, miniCanvas.height);
+    }
+
+    function obtenerPixeles28x28() {
+      // Redimensionar el dibujo del canvas grande al pequeño
+      miniCtx.clearRect(0, 0, 28, 28);
+      miniCtx.fillStyle = "white";
+      miniCtx.fillRect(0, 0, 28, 28);
+      miniCtx.drawImage(canvas, 0, 0, 28, 28);
+
+      const pixels = [];
+
+      for (let x = 0; x < 28; x++) {
+        for (let y = 0; y < 28; y++) {
+          const imgData = miniCtx.getImageData(y, x, 1, 1);
+          const data = imgData.data;
+
+          // Convertir de fondo blanco / numero negro
+          // data[0] = canal rojo
+          // blanco = 255, negro = 0
+          let color = 1 - (data[0] / 255);
+
+          color = Number(color.toFixed(2));
+          pixels.push(color);
+        }
+      }
+
+      return pixels;
+    }
+
+    function predecirNumero() {
+      const pixels = obtenerPixeles28x28();
+
+      $.post(
+        "http://localhost:8000",
+        { pixeles: pixels.join(",") },
+        function(response) {
+          console.log("Resultado:", response);
+          $("#resultado").html("Resultado: " + response);
+        }
+      ).fail(function(xhr) {
+        console.error(xhr.responseText);
+        $("#resultado").html("Error: " + xhr.responseText);
+      });
+    }
+  </script>
+</body>
+</html>
